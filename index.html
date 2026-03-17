@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1A0D00">
+<title>Johanesburg Gold Rush · 6×4</title>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@400;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<!-- Game CSS -->
+<link rel="stylesheet" href="css/game.css">
+
+<script>
+  window.JOZI_API_BASE    = '/api';
+  window.JOZI_API_TIMEOUT = 10000;
+  window.BIG5_MOCK        = true;   // ← set false in production
+  window.BIG5_API_BASE    = '/api';
+  window.JOZI_MUSIC_SRC   = null;   // ← set to '/audio/jozi-theme.ogg' in production
+</script>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     LOADER — banner background + progress
+══════════════════════════════════════════════ -->
+<div id="loader">
+  <!-- Full-bleed banner image -->
+  <div class="ld-bg"></div>
+  <!-- Bottom content -->
+  <div class="ld-content">
+    <div class="ld-sub">Premium Slot Game</div>
+    <div class="ld-bar-wrap"><div class="ld-bar" id="ld-bar"></div></div>
+    <div class="ld-status" id="ld-status">Loading…</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     WIN CELEBRATION OVERLAY
+══════════════════════════════════════════════ -->
+<div class="cel-screen" id="cel-screen">
+  <div class="cel-win-icon" id="cel-win-icon">💰</div>
+  <div class="cel-type"    id="cel-type">WIN</div>
+  <div class="cel-title"   id="cel-title">BIG WIN</div>
+  <div class="cel-amount"  id="cel-amount">0</div>
+  <div class="cel-cur">ZAR</div>
+  <div class="cel-dismiss">Tap to continue</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     GAME SHELL
+══════════════════════════════════════════════ -->
+<div id="game">
+  <div class="g-bg"></div>
+  <div class="g-vignette"></div>
+
+  <!-- Session pill -->
+  <div class="session-pill" id="session-pill">
+    <span class="spill-dot"></span>
+    <span id="spl-user">Player</span>
+    <span style="color:rgba(255,195,50,.3)">&nbsp;·&nbsp;</span>
+    <span id="spl-time" style="font-variant-numeric:tabular-nums">00:00</span>
+  </div>
+
+  <!-- Network indicator -->
+  <div class="net-indicator" id="net-ind"></div>
+
+  <!-- Main canvas — properly sized reel area -->
+  <div class="canvas-area">
+    <div class="reels-outer">
+      <div class="reels-inner">
+        <div class="frame-title">Johanesburg Gold Rush</div>
+        <div class="reels-grid" id="reels-grid"></div>
+        <div class="pl-row"    id="pl-row"></div>
+        <div class="win-display" id="win-display">
+          <div class="wd-label">WIN</div>
+          <div class="wd-amount" id="wd-amount">0 ZAR</div>
+        </div>
+
+        <!-- Free spins HUD -->
+        <div class="fs-hud" id="fs-hud">
+          <div class="fs-hud-lbl">Free Spins</div>
+          <div class="fs-hud-num" id="fs-num">10</div>
+          <div class="fs-hud-mul" id="fs-mul-disp">×3 Multiplier</div>
+        </div>
+
+        <!-- Free spins multiplier badge -->
+        <div class="fs-mul-badge" id="fs-mul-badge">
+          <div class="fmb-lbl">Multiplier</div>
+          <div class="fmb-val">×3</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom nav -->
+  <div class="bot-nav">
+    <div class="nav-icons">
+      <button class="ni" id="ni-menu"     title="Menu">    <i class="fas fa-bars"></i></button>
+      <div class="ni-sep"></div>
+      <button class="ni" id="ni-settings" title="Settings"><i class="fas fa-sliders"></i></button>
+      <button class="ni" id="ni-info"     title="Paytable"><i class="fas fa-list-ol"></i></button>
+      <button class="ni" id="ni-history"  title="History"> <i class="fas fa-clock-rotate-left"></i></button>
+      <div class="ni-sep"></div>
+      <button class="ni active" id="ni-sound" title="Sound"><i class="fas fa-volume-high"></i></button>
+      <button class="ni" id="ni-turbo"    title="Turbo">   <i class="fas fa-gauge-high"></i></button>
+      <button class="ni" id="ni-auto"     title="Auto">    <i class="fas fa-rotate"></i></button>
+    </div>
+
+    <div class="nav-balance">
+      <div class="nb-lbl">Balance</div>
+      <div class="nb-val" id="nav-bal">0.00</div>
+      <div class="nb-cur">ZAR</div>
+    </div>
+
+    <div class="nav-right">
+      <div class="nav-bet">
+        <button class="bet-pm" id="bet-dn">−</button>
+        <div class="bet-mid">
+          <div class="bet-lbl">Bet / Line</div>
+          <div class="bet-val" id="bet-disp">5</div>
+        </div>
+        <button class="bet-pm" id="bet-up">+</button>
+      </div>
+      <button class="spin-btn" id="btn-spin" disabled>
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-9-9 9 9 0 0 1 9-9 9 9 0 0 1 8.5 6"/>
+          <path d="M21 3v6h-6"/>
+        </svg>
+      </button>
+      <button class="stop-btn" id="btn-stop"><i class="fas fa-stop"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     MODALS
+═══════════════════════════════════════════════════════ -->
+
+<!-- PAYTABLE -->
+<div id="modal-paytable" class="modal-overlay">
+  <div class="modal">
+    <button class="m-close" data-close="modal-paytable"><i class="fas fa-xmark"></i></button>
+    <h2><i class="fas fa-list-ol" style="color:var(--gold-lt);margin-right:9px;font-size:15px"></i>Paytable</h2>
+    <p style="font-size:12px;margin-bottom:10px">Left to right from reel 1. Multiplied by bet per line.</p>
+    <div id="paytable-content"></div>
+    <hr>
+    <p><strong>Wild</strong> substitutes all except Scatter. Appears on reels 2–5.</p>
+    <p><strong>Scatter</strong> pays anywhere — 3+ trigger Free Spins.</p>
+  </div>
+</div>
+
+<!-- BET SETTINGS -->
+<div id="modal-bet" class="modal-overlay">
+  <div class="modal">
+    <button class="m-close" data-close="modal-bet"><i class="fas fa-xmark"></i></button>
+    <h2><i class="fas fa-coins" style="color:var(--gold-lt);margin-right:9px;font-size:15px"></i>Bet Settings</h2>
+    <p>Select bet per line:</p>
+    <div class="bet-chips" id="bet-chip-row"></div>
+    <hr>
+    <div style="display:flex;justify-content:space-between;padding:3px 0">
+      <span style="color:var(--muted);font-size:14px">Lines</span>
+      <strong id="modal-lines">10</strong>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:3px 0;margin-top:4px">
+      <span style="color:var(--muted);font-size:14px">Total bet</span>
+      <strong id="modal-total-bet" style="font-family:'Cinzel',serif;font-size:17px;color:var(--gold-lt)">50 ZAR</strong>
+    </div>
+    <button class="m-btn gold full" onclick="UI.hideModal('modal-bet')">
+      <i class="fas fa-check"></i> Confirm
+    </button>
+  </div>
+</div>
+
+<!-- AUTO SPIN -->
+<div id="modal-autospin" class="modal-overlay">
+  <div class="modal">
+    <button class="m-close" data-close="modal-autospin"><i class="fas fa-xmark"></i></button>
+    <h2><i class="fas fa-rotate" style="color:var(--gold-lt);margin-right:9px;font-size:15px"></i>Auto Spin</h2>
+    <p>Number of spins:</p>
+    <div class="count-chips" id="count-chips">
+      <span class="count-chip sel" data-n="10">10</span>
+      <span class="count-chip"    data-n="25">25</span>
+      <span class="count-chip"    data-n="50">50</span>
+      <span class="count-chip"    data-n="100">100</span>
+    </div>
+    <hr>
+    <label>Stop if single win exceeds (ZAR):</label>
+    <input class="limit-input" id="auto-win-limit"  type="number" value="500" min="0" step="50">
+    <label style="margin-top:12px">Stop if balance falls below (ZAR):</label>
+    <input class="limit-input" id="auto-loss-limit" type="number" value="100" min="0" step="20">
+    <button class="m-btn gold full" style="margin-top:16px" onclick="UI.startAutoSpin()">
+      <i class="fas fa-play"></i> Start Auto Spin
+    </button>
+  </div>
+</div>
+
+<!-- WIN MODAL -->
+<div id="modal-win" class="modal-overlay">
+  <div class="modal modal-center">
+    <button class="m-close" data-close="modal-win"><i class="fas fa-xmark"></i></button>
+    <div class="modal-icon" id="win-modal-icon"><i class="fas fa-trophy"></i></div>
+    <h2 id="win-modal-title" style="text-align:center;border:none;padding:0;font-size:20px;margin-bottom:2px">BIG WIN</h2>
+    <div class="bw-amount" id="win-modal-amount">0</div>
+    <div class="bw-cur">ZAR</div>
+    <div class="bw-sub" id="win-modal-sub"></div>
+    <div class="verify-row" id="win-verify" style="display:none">
+      <strong>Provably Fair · Spin ID</strong>
+      <span id="win-spin-id">—</span>
+    </div>
+    <button class="m-btn gold full" style="margin-top:18px" onclick="UI.hideModal('modal-win')">
+      <i class="fas fa-check"></i> Collect
+    </button>
+  </div>
+</div>
+
+<!-- BONUS TRIGGER -->
+<div id="modal-bonus" class="modal-overlay">
+  <div class="modal modal-center">
+    <button class="m-close" data-close="modal-bonus"><i class="fas fa-xmark"></i></button>
+    <div class="modal-icon green"><i class="fas fa-star-of-life"></i></div>
+    <h2 style="text-align:center;border:none;padding:0;font-size:20px;margin-bottom:8px">FREE SPINS BONUS</h2>
+    <div style="font-family:'Cinzel',serif;font-size:52px;font-weight:700;color:var(--gold-lt);text-align:center;line-height:1;margin:8px 0" id="bonus-count">10</div>
+    <p style="text-align:center">Free Spins with a <strong style="color:var(--gold-lt)" id="bonus-mul">3×</strong> Multiplier</p>
+    <p style="text-align:center;font-size:12px">All wins during free spins are multiplied</p>
+    <button class="m-btn gold full" style="margin-top:18px" onclick="UI.hideModal('modal-bonus');GameEngine.beginFreeSpins()">
+      <i class="fas fa-play"></i> Begin Free Spins
+    </button>
+  </div>
+</div>
+
+<!-- FREE SPINS END -->
+<div id="modal-fs-end" class="modal-overlay">
+  <div class="modal modal-center">
+    <button class="m-close" data-close="modal-fs-end"><i class="fas fa-xmark"></i></button>
+    <div class="modal-icon green"><i class="fas fa-check-double"></i></div>
+    <h2 style="text-align:center;border:none;padding:0;font-size:18px;margin-bottom:8px">Free Spins Complete</h2>
+    <p style="text-align:center;font-size:13px">Total winnings</p>
+    <div class="bw-amount" id="fs-end-amount">0</div>
+    <div class="bw-cur">ZAR</div>
+    <button class="m-btn gold full" style="margin-top:16px" onclick="UI.hideModal('modal-fs-end')">
+      <i class="fas fa-check"></i> Continue
+    </button>
+  </div>
+</div>
+
+<!-- INSUFFICIENT FUNDS -->
+<div id="modal-insufficient" class="modal-overlay">
+  <div class="modal modal-center">
+    <button class="m-close" data-close="modal-insufficient"><i class="fas fa-xmark"></i></button>
+    <div class="modal-icon red"><i class="fas fa-wallet"></i></div>
+    <h2 style="text-align:center;border:none;padding:0;font-size:18px;margin-bottom:8px">Insufficient Balance</h2>
+    <p style="text-align:center">Your balance is too low for this bet.</p>
+    <button class="m-btn gold full" style="margin-top:14px"
+      onclick="UI.hideModal('modal-insufficient');UI.showModal('modal-deposit')">
+      <i class="fas fa-plus"></i> Deposit Now
+    </button>
+    <button class="m-btn outline full" onclick="UI.hideModal('modal-insufficient')">Adjust Bet</button>
+  </div>
+</div>
+
+<!-- DEPOSIT -->
+<div id="modal-deposit" class="modal-overlay">
+  <div class="modal">
+    <button class="m-close" data-close="modal-deposit"><i class="fas fa-xmark"></i></button>
+    <h2><i class="fas fa-wallet" style="color:var(--gold-lt);margin-right:9px;font-size:15px"></i>Deposit</h2>
+    <p>Select amount to add to your balance:</p>
+    <div class="deposit-grid">
+      <div class="dep-chip" onclick="UI.deposit(100)"> <div class="dc-amt">100</div>  <div class="dc-cur">ZAR</div></div>
+      <div class="dep-chip" onclick="UI.deposit(200)"> <div class="dc-amt">200</div>  <div class="dc-cur">ZAR</div></div>
+      <div class="dep-chip" onclick="UI.deposit(500)"> <div class="dc-amt">500</div>  <div class="dc-cur">ZAR</div></div>
+      <div class="dep-chip" onclick="UI.deposit(1000)"><div class="dc-amt">1,000</div><div class="dc-cur">ZAR</div></div>
+    </div>
+    <hr>
+    <p style="font-size:11px">Funds credited instantly. 18+ | Play responsibly.</p>
+  </div>
+</div>
+
+<!-- RULES -->
+<div id="modal-rules" class="modal-overlay">
+  <div class="modal">
+    <button class="m-close" data-close="modal-rules"><i class="fas fa-xmark"></i></button>
+    <h2><i class="fas fa-scroll" style="color:var(--gold-lt);margin-right:9px;font-size:15px"></i>Game Rules</h2>
+    <p><strong>RTP:</strong> 96.5% &nbsp;&nbsp;<strong>Volatility:</strong> High</p>
+    <p><strong>Grid:</strong> 6 reels × 4 rows — 10 paylines</p>
+    <hr>
+    <p><strong>Wild</strong> substitutes all except Scatter. Appears on reels 2–5.</p>
+    <p><strong>Scatter</strong> pays anywhere. 3+ trigger 10 Free Spins with 3× multiplier.</p>
+    <p><strong>Maximum win:</strong> 5,000× total bet per spin.</p>
+    <hr>
+    <p style="font-size:11px">Malfunction voids all pays. Min R10 · Max R1,000 total bet. 18+.</p>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div id="modal-settings" class="modal-overlay">
+  <div class="modal">
+    <button class="m-close" data-close="modal-settings"><i class="fas fa-xmark"></i></button>
+    <h2><i class="fas fa-sliders" style="color:var(--gold-lt);margin-right:9px;font-size:15px"></i>Settings</h2>
+    <div class="toggle-row">
+      <span class="toggle-label">Sound Effects</span>
+      <button class="toggle-btn on" id="t-sound" onclick="UI.toggleSound()">ON</button>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Music</span>
+      <button class="toggle-btn on" id="t-music" onclick="UI.toggleMusic()">ON</button>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Turbo Mode</span>
+      <button class="toggle-btn" id="t-turbo" onclick="UI.toggleTurbo()">OFF</button>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Fullscreen</span>
+      <button class="toggle-btn" onclick="UI.toggleFullscreen()"><i class="fas fa-expand"></i> Toggle</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESPONSIBLE GAMING -->
+<div id="modal-responsible" class="modal-overlay">
+  <div class="modal">
+    <button class="m-close" data-close="modal-responsible"><i class="fas fa-xmark"></i></button>
+    <h2><i class="fas fa-shield-halved" style="color:var(--green);margin-right:9px;font-size:15px"></i>Responsible Gaming</h2>
+    <p>Set limits to stay in control of your session.</p>
+    <label>Session time limit (minutes):</label>
+    <input class="limit-input" id="rl-time" type="number" value="60" min="5" max="480">
+    <label style="margin-top:13px">Session loss limit (ZAR):</label>
+    <input class="limit-input" id="rl-loss" type="number" value="500" min="0" step="50">
+    <button class="m-btn gold full" style="margin-top:16px" onclick="UI.saveLimits()">
+      <i class="fas fa-check"></i> Save Limits
+    </button>
+    <hr>
+    <p style="font-size:12px">Need help?<br>
+      <strong>National Responsible Gambling Programme</strong><br>
+      Helpline: <strong>0800 006 008</strong> — Free · 24/7
+    </p>
+  </div>
+</div>
+
+<!-- SESSION STATS -->
+<div id="modal-stats" class="modal-overlay">
+  <div class="modal">
+    <button class="m-close" data-close="modal-stats"><i class="fas fa-xmark"></i></button>
+    <h2><i class="fas fa-chart-bar" style="color:var(--gold-lt);margin-right:9px;font-size:15px"></i>Session Statistics</h2>
+    <div class="stats-bar">
+      <div class="stat-cell"><div class="stat-val" id="stat-spins">0</div><div class="stat-lbl">Spins</div></div>
+      <div class="stat-cell"><div class="stat-val" id="stat-bet">R0</div><div class="stat-lbl">Total Bet</div></div>
+      <div class="stat-cell"><div class="stat-val" id="stat-won">R0</div><div class="stat-lbl">Total Won</div></div>
+      <div class="stat-cell"><div class="stat-val" id="stat-best">R0</div><div class="stat-lbl">Best Win</div></div>
+    </div>
+    <p style="text-align:center;font-size:11px;margin-top:14px;color:var(--muted)">
+      Session ID: <span id="stat-session-id" style="font-family:monospace;color:rgba(255,195,50,.5)">—</span>
+    </p>
+  </div>
+</div>
+
+<!-- HISTORY -->
+<div id="modal-history" class="modal-overlay">
+  <div class="modal">
+    <button class="m-close" data-close="modal-history"><i class="fas fa-xmark"></i></button>
+    <h2><i class="fas fa-clock-rotate-left" style="color:var(--gold-lt);margin-right:9px;font-size:15px"></i>Spin History</h2>
+    <p style="font-size:11px;margin-bottom:11px">Last 20 spins this session</p>
+    <div id="history-list"><p style="color:var(--muted)">No spins recorded yet.</p></div>
+  </div>
+</div>
+
+<!-- PAUSE -->
+<div id="modal-pause" class="modal-overlay">
+  <div class="modal modal-center">
+    <button class="m-close" data-close="modal-pause"><i class="fas fa-xmark"></i></button>
+    <div class="modal-icon"><i class="fas fa-pause"></i></div>
+    <h2 style="text-align:center;border:none;padding:0;font-size:18px;margin-bottom:4px">Game Paused</h2>
+    <button class="m-btn gold full" onclick="UI.hideModal('modal-pause')">
+      <i class="fas fa-play"></i> Resume
+    </button>
+    <button class="m-btn outline full" onclick="UI.from('modal-pause','modal-settings')">
+      <i class="fas fa-sliders"></i> Settings
+    </button>
+    <button class="m-btn danger full" style="margin-top:6px" onclick="UI.from('modal-pause','modal-exit')">
+      <i class="fas fa-right-from-bracket"></i> Exit Game
+    </button>
+  </div>
+</div>
+
+<!-- EXIT -->
+<div id="modal-exit" class="modal-overlay">
+  <div class="modal modal-center">
+    <button class="m-close" data-close="modal-exit"><i class="fas fa-xmark"></i></button>
+    <div class="modal-icon red"><i class="fas fa-right-from-bracket"></i></div>
+    <h2 style="text-align:center;border:none;padding:0;font-size:18px;margin-bottom:6px">Exit Game?</h2>
+    <p style="text-align:center">Your balance will be returned to your account.</p>
+    <p style="font-family:'Cinzel',serif;font-size:20px;color:var(--gold-lt);text-align:center;margin-top:6px" id="exit-bal-disp">R 0.00</p>
+    <button class="m-btn danger full" style="margin-top:16px" onclick="UI.exitGame()">
+      <i class="fas fa-right-from-bracket"></i> Exit to Lobby
+    </button>
+    <button class="m-btn outline full" onclick="UI.hideModal('modal-exit')">Stay &amp; Play</button>
+  </div>
+</div>
+
+<!-- SESSION EXPIRED -->
+<div id="modal-session" class="modal-overlay">
+  <div class="modal modal-center">
+    <div class="modal-icon red"><i class="fas fa-clock"></i></div>
+    <h2 style="text-align:center;border:none;padding:0;font-size:18px;margin-bottom:8px">Session Expired</h2>
+    <p style="text-align:center">Your session has timed out. Please re-authenticate.</p>
+    <button class="m-btn gold full" style="margin-top:16px" onclick="UI.reAuth()">
+      <i class="fas fa-key"></i> Re-authenticate
+    </button>
+  </div>
+</div>
+
+<!-- CONNECTION LOST -->
+<div id="modal-connection" class="modal-overlay">
+  <div class="modal modal-center">
+    <div class="modal-icon red"><i class="fas fa-wifi"></i></div>
+    <h2 style="text-align:center;border:none;padding:0;font-size:18px;margin-bottom:8px">Connection Lost</h2>
+    <p style="text-align:center">Attempting to reconnect to the game server...</p>
+    <div class="modal-spinner"></div>
+    <button class="m-btn outline full" onclick="UI.retryConnection()">
+      <i class="fas fa-rotate"></i> Retry Now
+    </button>
+  </div>
+</div>
+
+<!-- MENU -->
+<div id="modal-menu" class="modal-overlay">
+  <div class="modal">
+    <button class="m-close" data-close="modal-menu"><i class="fas fa-xmark"></i></button>
+    <h2><i class="fas fa-bars" style="color:var(--gold-lt);margin-right:9px;font-size:15px"></i>Menu</h2>
+    <div class="menu-grid">
+      <div class="menu-tile" onclick="UI.from('modal-menu','modal-paytable')"><i class="fas fa-list-ol"></i><span>Paytable</span></div>
+      <div class="menu-tile" onclick="UI.from('modal-menu','modal-bet')">     <i class="fas fa-coins"></i><span>Bet Settings</span></div>
+      <div class="menu-tile" onclick="UI.from('modal-menu','modal-autospin')"><i class="fas fa-rotate"></i><span>Auto Spin</span></div>
+      <div class="menu-tile" onclick="UI.from('modal-menu','modal-history')"> <i class="fas fa-clock-rotate-left"></i><span>History</span></div>
+      <div class="menu-tile" onclick="UI.from('modal-menu','modal-rules')">   <i class="fas fa-scroll"></i><span>Rules</span></div>
+      <div class="menu-tile" onclick="UI.from('modal-menu','modal-settings')"><i class="fas fa-sliders"></i><span>Settings</span></div>
+      <div class="menu-tile" onclick="UI.from('modal-menu','modal-deposit')"> <i class="fas fa-wallet"></i><span>Deposit</span></div>
+      <div class="menu-tile" onclick="UI.from('modal-menu','modal-responsible')"><i class="fas fa-shield-halved"></i><span>Responsible</span></div>
+      <div class="menu-tile" onclick="UI.from('modal-menu','modal-stats')">   <i class="fas fa-chart-bar"></i><span>Statistics</span></div>
+      <div class="menu-tile span2" onclick="UI.from('modal-menu','modal-pause')"><i class="fas fa-pause-circle"></i><span>Pause / Exit</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ══════════════════════════════════════════
+     SCRIPTS (order matters)
+══════════════════════════════════════════════ -->
+<script src="js/api.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ui.js"></script>
+
+</body>
+</html>
