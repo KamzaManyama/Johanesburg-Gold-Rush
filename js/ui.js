@@ -1,12 +1,3 @@
-/**
- * Big Five Bonanza — UI Controller
- * Renders game state driven by GameEngine events.
- * All money flows through the engine which calls the API.
- * Zero game logic here — pure presentation layer.
- */
-
-'use strict';
-
 const UI = (() => {
 
   /* ─────────────────────────────────────────
@@ -44,23 +35,21 @@ const UI = (() => {
   };
 
   /* ─────────────────────────────────────────
-   * SPIN ANIMATION CONFIG
+   * ANIMATION CONFIG
    * ───────────────────────────────────────── */
   const ANIM = {
-    get spinGap()  { return GameEngine.state.turbo ? 55  : 110 },
-    get spinDur()  { return GameEngine.state.turbo ? 130 : 240 },
-    get spinIter() { return GameEngine.state.turbo ? 4   : 8   },
-    get spinFps()  { return GameEngine.state.turbo ? 30  : 52  },
-    get autoDelay(){ return GameEngine.state.turbo ? 200 : 500 },
+    get reelDelay() { return GameEngine.state.turbo ? 50  : 100 },   // stagger between reels
+    get spinTime()  { return GameEngine.state.turbo ? 500 : 900 },   // total spin duration per reel
+    get tickMs()    { return GameEngine.state.turbo ? 60  : 100 },   // symbol swap interval
+    get autoDelay() { return GameEngine.state.turbo ? 200 : 500 },
   };
 
   /* ─────────────────────────────────────────
-   * SYMBOL POOL (for client-side reel animation only)
-   * Real symbols come from server result
+   * SYMBOL POOL for animation (fast random swap)
    * ───────────────────────────────────────── */
   const ANIM_POOL = [
-    'nugget','nugget','nugget','boots','boots','helmet','cart',
-    'lantern','pickaxe','dynamite','wild','scatter',
+    'nugget','nugget','nugget','boots','boots','helmet',
+    'cart','lantern','pickaxe','dynamite',
   ];
   function randAnimSym() { return ANIM_POOL[Math.floor(Math.random() * ANIM_POOL.length)]; }
 
@@ -68,16 +57,20 @@ const UI = (() => {
    * FORMAT HELPERS
    * ───────────────────────────────────────── */
   function fmt(n)  { return Number(n).toLocaleString('en-ZA', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
-  function fmtI(n) { return Number(n).toLocaleString('en-ZA'); }
+  function fmtI(n) { return Number(n).toLocaleString('en-ZA', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
   function fmtTime(secs) {
     return String(Math.floor(secs/60)).padStart(2,'0') + ':' + String(secs%60).padStart(2,'0');
+  }
+  function fmtBet(v) {
+    // Show R2.50 style for decimal bets
+    const n = Number(v);
+    return n % 1 === 0 ? String(n) : n.toFixed(2);
   }
 
   /* ─────────────────────────────────────────
    * GRID BUILD
    * ───────────────────────────────────────── */
   function buildGrid() {
-    const S = GameEngine.symbols;
     E.reelsGrid.innerHTML = '';
     E.plRow.innerHTML     = '';
 
@@ -86,29 +79,31 @@ const UI = (() => {
       col.className = 'reel-col';
       col.id = 'col' + c;
       for (let r = 0; r < 4; r++) {
-        const cell = document.createElement('div');
-        cell.className = 'reel-cell';
-        cell.id = `c${r}x${c}`;
+        const cellEl = document.createElement('div');
+        cellEl.className = 'reel-cell';
+        cellEl.id = `c${r}x${c}`;
         const img = document.createElement('img');
         img.className = 'sym-img';
         img.alt = '';
         img.loading = 'eager';
-        cell.appendChild(img);
-        col.appendChild(cell);
+        img.draggable = false;
+        cellEl.appendChild(img);
+        col.appendChild(cellEl);
       }
       E.reelsGrid.appendChild(col);
     }
 
     for (let i = 0; i < 10; i++) {
-      const dot = document.createElement('div');
-      dot.className = 'pl-dot';
-      dot.id = 'pld' + i;
-      E.plRow.appendChild(dot);
+      const dotEl = document.createElement('div');
+      dotEl.className = 'pl-dot';
+      dotEl.id = 'pld' + i;
+      E.plRow.appendChild(dotEl);
     }
   }
 
-  function cell(r, c)  { return document.getElementById(`c${r}x${c}`) }
-  function dot(i)      { return document.getElementById('pld' + i) }
+  function cellEl(r, c) { return $(`c${r}x${c}`) }
+  function colEl(c)      { return $('col' + c) }
+  function dotEl(i)      { return $('pld' + i) }
 
   function setCell(el, sid) {
     if (!el) return;
@@ -116,45 +111,67 @@ const UI = (() => {
     if (!img) return;
     const sym = GameEngine.symbols[sid];
     img.src = sym ? sym.src : '';
-    img.className = 'sym-img' +
-      (sid === 'scatter' ? ' is-scatter' : '') +
-      (sid === 'wild'    ? ' is-wild'    : '');
+    img.className = 'sym-img'
+      + (sid === 'scatter' ? ' is-scatter' : '')
+      + (sid === 'wild'    ? ' is-wild'    : '');
     el.dataset.s = sid;
   }
 
   function fillRandom() {
     for (let c = 0; c < 6; c++)
       for (let r = 0; r < 4; r++)
-        setCell(cell(r, c), randAnimSym());
+        setCell(cellEl(r, c), randAnimSym());
   }
 
   function applyGrid(grid) {
     for (let c = 0; c < 6; c++)
       for (let r = 0; r < 4; r++)
-        setCell(cell(r, c), grid[c][r]);
+        setCell(cellEl(r, c), grid[c][r]);
   }
 
   /* ─────────────────────────────────────────
-   * REEL SPIN ANIMATION
+   * REEL SPIN ANIMATION — professional slot spin
+   * Each reel spins independently with blur + smooth stop
    * ───────────────────────────────────────── */
-  function spinReel(col, finalSyms, startDelay, dur) {
-    const cells = [0,1,2,3].map(r => cell(r, col));
-    return new Promise(resolve => {
-      setTimeout(() => {
-        cells.forEach(c => c && c.classList.add('spinning'));
-        let ticks = 0;
-        const iv = setInterval(() => {
-          cells.forEach(c => c && setCell(c, randAnimSym()));
-          AudioEngine.sfx.reelTick();
-          if (++ticks >= ANIM.spinIter) clearInterval(iv);
-        }, ANIM.spinFps);
+  let _spinningCols = new Set();
 
+  function spinReel(colIdx, finalSyms, startDelay, totalDuration) {
+    return new Promise(resolve => {
+      const col = colEl(colIdx);
+      if (!col) { resolve(); return; }
+
+      const cells = [0,1,2,3].map(r => cellEl(r, colIdx));
+
+      setTimeout(() => {
+        // Start spinning
+        _spinningCols.add(colIdx);
+        col.classList.add('spinning');
+        col.classList.remove('stopping');
+
+        // Rapid symbol cycling
+        const tickIv = setInterval(() => {
+          cells.forEach(c => c && setCell(c, randAnimSym()));
+          if (AudioEngine.sfx) AudioEngine.sfx.reelTick();
+        }, ANIM.tickMs);
+
+        // Stop: remove spinning, show real symbols with stopping animation
+        const stopAt = totalDuration - startDelay;
         setTimeout(() => {
-          cells.forEach(c => c && c.classList.remove('spinning'));
+          clearInterval(tickIv);
+          col.classList.remove('spinning');
+          col.classList.add('stopping');
+
+          // Snap final symbols
           finalSyms.forEach((sid, r) => setCell(cells[r], sid));
-          AudioEngine.sfx.reelStop(col);
-          resolve();
-        }, dur);
+          AudioEngine.sfx.reelStop(colIdx);
+          _spinningCols.delete(colIdx);
+
+          // Remove stopping class after animation
+          setTimeout(() => {
+            col.classList.remove('stopping');
+            resolve();
+          }, 250);
+        }, stopAt);
       }, startDelay);
     });
   }
@@ -167,17 +184,17 @@ const UI = (() => {
       const pl = paylines[wl.lineIndex];
       if (!pl) return;
       pl.forEach((row, col) => {
-        const c = cell(row, col);
+        const c = cellEl(row, col);
         if (c) c.classList.add('win-cell');
       });
-      const d = dot(wl.lineIndex);
+      const d = dotEl(wl.lineIndex);
       if (d) d.classList.add('lit');
     });
   }
 
   function clearWinCells() {
     document.querySelectorAll('.reel-cell').forEach(c => c.classList.remove('win-cell'));
-    for (let i = 0; i < 10; i++) { const d = dot(i); if (d) d.classList.remove('lit'); }
+    for (let i = 0; i < 10; i++) { const d = dotEl(i); if (d) d.classList.remove('lit'); }
     E.winDisplay.classList.remove('show');
   }
 
@@ -189,21 +206,18 @@ const UI = (() => {
     E.navBal.textContent = fmt(bal);
     if (_lastBal !== null) {
       E.navBal.classList.remove('up', 'down');
-      if (bal > _lastBal) {
-        E.navBal.classList.add('up');
-        setTimeout(() => E.navBal.classList.remove('up'), 600);
-      } else if (bal < _lastBal) {
-        E.navBal.classList.add('down');
-        setTimeout(() => E.navBal.classList.remove('down'), 600);
-      }
+      void E.navBal.offsetWidth;
+      if (bal > _lastBal)      { E.navBal.classList.add('up');   setTimeout(() => E.navBal.classList.remove('up'),   700); }
+      else if (bal < _lastBal) { E.navBal.classList.add('down'); setTimeout(() => E.navBal.classList.remove('down'), 700); }
     }
     _lastBal = bal;
   }
 
   function updateBetDisplay() {
     const S = GameEngine.state;
-    E.betDisp.textContent = S.betPerLine;
-    $('modal-total-bet') && ($('modal-total-bet').textContent = GameEngine.totalBet() + ' ZAR');
+    E.betDisp.textContent = fmtBet(S.betPerLine);
+    const tb = GameEngine.totalBet();
+    $('modal-total-bet') && ($('modal-total-bet').textContent = 'R' + fmtI(tb));
     $('modal-lines')     && ($('modal-lines').textContent = S.cfg.lines);
   }
 
@@ -215,7 +229,7 @@ const UI = (() => {
    * PAYTABLE RENDER
    * ───────────────────────────────────────── */
   function buildPaytable() {
-    const S    = GameEngine.state;
+    const S   = GameEngine.state;
     const syms = GameEngine.symbols;
     const pt   = S.cfg.paytable;
     const el   = $('paytable-content');
@@ -233,10 +247,10 @@ const UI = (() => {
         <img class="pt-icon" src="${sym.src}" alt="${sym.name}">
         <span class="pt-name">${sym.name}</span>
         <div class="pt-pays">
-          <div class="pt-pay"><span>3× </span>${m[2]||'—'}</div>
-          <div class="pt-pay"><span>4× </span>${m[3]||'—'}</div>
-          <div class="pt-pay"><span>5× </span>${m[4]||'—'}</div>
-          <div class="pt-pay"><span>6× </span>${m[5]||'—'}</div>
+          <div class="pt-pay"><span>3× </span>${m[1]||m[2]||'—'}</div>
+          <div class="pt-pay"><span>4× </span>${m[2]||m[3]||'—'}</div>
+          <div class="pt-pay"><span>5× </span>${m[3]||m[4]||'—'}</div>
+          <div class="pt-pay"><span>6× </span>${m[4]||m[5]||'—'}</div>
         </div>`;
       el.appendChild(row);
     });
@@ -253,7 +267,7 @@ const UI = (() => {
     S.cfg.betSteps.forEach(v => {
       const b = document.createElement('span');
       b.className = 'bet-chip' + (v === S.betPerLine ? ' sel' : '');
-      b.textContent = 'R' + v;
+      b.textContent = 'R' + fmtBet(v);
       b.onclick = () => {
         GameEngine.setBetByValue(v);
         AudioEngine.sfx.click();
@@ -275,12 +289,12 @@ const UI = (() => {
     if (!S.history.length) {
       el.innerHTML = '<p style="color:var(--muted)">No spins yet.</p>'; return;
     }
-    el.innerHTML = S.history.map(h => `
+    el.innerHTML = S.history.slice(0,20).map(h => `
       <div class="hist-row">
-        <span style="color:var(--muted);font-size:12px">Spin #${h.spin}</span>
-        <span style="color:var(--muted);font-size:12px">Bet R${fmtI(h.bet)}</span>
-        <span class="${h.win > 0 ? 'hist-win' : 'hist-lose'}">${h.win > 0 ? '+ ' + fmtI(h.win) : '—'}</span>
-        <span style="color:var(--muted);font-size:11px">${fmt(h.balance)}</span>
+        <span style="color:var(--muted);font-size:12px">#${h.spin}</span>
+        <span style="color:var(--muted);font-size:12px">R${fmtI(h.bet)}</span>
+        <span class="${h.win > 0 ? 'hist-win' : 'hist-lose'}">${h.win > 0 ? '+R' + fmtI(h.win) : '—'}</span>
+        <span style="color:var(--muted);font-size:11px">R${fmt(h.balance)}</span>
       </div>`).join('');
   }
 
@@ -288,13 +302,12 @@ const UI = (() => {
    * STATS UPDATE
    * ───────────────────────────────────────── */
   function updateStats() {
-    const S = GameEngine.state;
-    const s = S.stats;
+    const s = GameEngine.state.stats;
     $('stat-spins') && ($('stat-spins').textContent = s.spins);
     $('stat-bet')   && ($('stat-bet').textContent   = 'R' + fmtI(s.totalBet));
     $('stat-won')   && ($('stat-won').textContent   = 'R' + fmtI(s.totalWon));
     $('stat-best')  && ($('stat-best').textContent  = 'R' + fmtI(s.bestWin));
-    $('stat-session-id') && ($('stat-session-id').textContent = S.sessionId || '—');
+    $('stat-session-id') && ($('stat-session-id').textContent = GameEngine.state.sessionId || '—');
   }
 
   /* ─────────────────────────────────────────
@@ -308,34 +321,35 @@ const UI = (() => {
   }
 
   /* ─────────────────────────────────────────
-   * CELEBRATION
+   * CELEBRATION — full screen win overlay
    * ───────────────────────────────────────── */
-  const WIN_ICONS = {
-    'WIN':       '🪙',
-    'BIG WIN':   '💰',
-    'GREAT WIN': '⛏️',
-    'MEGA WIN':  '🏆',
+  const WIN_DATA = {
+    SMALL_WIN: { icon:'🪙', label:'WIN',      color:'#FFD966' },
+    WIN:       { icon:'💰', label:'WIN',      color:'#FFD966' },
+    BIG_WIN:   { icon:'⛏️', label:'BIG WIN',  color:'#FFB800' },
+    SUPER_WIN: { icon:'💎', label:'SUPER WIN',color:'#FF9500' },
+    MEGA_WIN:  { icon:'🏆', label:'MEGA WIN', color:'#FF6B00' },
   };
 
-  function showCelebration(type, amount) {
-    E.celType.textContent   = type;
-    E.celTitle.textContent  = type;
-    E.celAmount.textContent = fmtI(amount);
-    // Update win icon
-    const iconEl = document.getElementById('cel-win-icon');
+  function showCelebration(winType, amount) {
+    const d = WIN_DATA[winType] || WIN_DATA.WIN;
+    E.celType.textContent   = d.label;
+    E.celTitle.textContent  = d.label;
+    E.celAmount.textContent = 'R' + fmtI(amount);
+    const iconEl = $('cel-win-icon');
     if (iconEl) {
-      iconEl.textContent = WIN_ICONS[type] || '💰';
+      iconEl.textContent = d.icon;
       iconEl.style.animation = 'none';
       void iconEl.offsetWidth;
       iconEl.style.animation = '';
     }
     E.celScreen.classList.add('show');
-    spawnConfetti(type === 'MEGA WIN' ? 80 : type === 'BIG WIN' ? 60 : 45);
+    spawnConfetti(winType === 'MEGA_WIN' ? 90 : winType === 'SUPER_WIN' ? 70 : 50);
   }
   E.celScreen.addEventListener('click', () => E.celScreen.classList.remove('show'));
 
   function spawnConfetti(n) {
-    const cols = ['#FFD147','#E8901A','#C97A12','#fff','#8B5A1F','#FFAD42','#D4950A','#FFF5E0'];
+    const cols = ['#FFD147','#E8901A','#C97A12','#fff','#8B5A1F','#FFAD42','#D4950A','#FFF5E0','#FF9500'];
     for (let i = 0; i < n; i++) {
       const p = document.createElement('div');
       p.className = 'confetti-p';
@@ -343,17 +357,17 @@ const UI = (() => {
         left:${Math.random()*100}vw;
         background:${cols[Math.floor(Math.random()*cols.length)]};
         border-radius:${Math.random()>.5?'50%':'2px'};
-        animation-duration:${1.4+Math.random()*2}s;
-        animation-delay:${Math.random()*.5}s`;
+        animation-duration:${1.5+Math.random()*2}s;
+        animation-delay:${Math.random()*.6}s`;
       document.body.appendChild(p);
-      setTimeout(() => p.remove(), 4500);
+      setTimeout(() => p.remove(), 4800);
     }
   }
 
   /* ─────────────────────────────────────────
    * NETWORK INDICATOR
    * ───────────────────────────────────────── */
-  function setNetwork(state) { // 'ok' | 'loading' | 'error'
+  function setNetwork(state) {
     E.netInd.className = 'net-indicator' + (state !== 'ok' ? ' ' + state : '');
   }
 
@@ -366,7 +380,7 @@ const UI = (() => {
     el.classList.add('active');
     switch (id) {
       case 'modal-history':  renderHistory();  break;
-      case 'modal-bet':      buildBetChips();  updateBetDisplay();  break;
+      case 'modal-bet':      buildBetChips();  updateBetDisplay(); break;
       case 'modal-paytable': buildPaytable();  break;
       case 'modal-stats':    updateStats();    break;
       case 'modal-exit':
@@ -399,11 +413,11 @@ const UI = (() => {
     E.toast.textContent = msg;
     E.toast.classList.add('show');
     clearTimeout(_toastTimer);
-    _toastTimer = setTimeout(() => E.toast.classList.remove('show'), 2400);
+    _toastTimer = setTimeout(() => E.toast.classList.remove('show'), 2600);
   }
 
   /* ─────────────────────────────────────────
-   * TOGGLE CONTROLS
+   * SETTINGS TOGGLES
    * ───────────────────────────────────────── */
   function toggleSound() {
     const on = !GameEngine.state.soundOn;
@@ -412,7 +426,7 @@ const UI = (() => {
     $('t-sound').className   = 'toggle-btn' + (on ? ' on' : '');
     E.niSound.innerHTML      = on ? '<i class="fas fa-volume-high"></i>' : '<i class="fas fa-volume-xmark"></i>';
     E.niSound.className      = 'ni' + (on ? ' active' : '');
-    toast(on ? 'Sound ON' : 'Sound OFF');
+    toast(on ? '🔊 Sound ON' : '🔇 Sound OFF');
   }
 
   function toggleMusic() {
@@ -420,7 +434,7 @@ const UI = (() => {
     GameEngine.setMusic(on);
     $('t-music').textContent = on ? 'ON' : 'OFF';
     $('t-music').className   = 'toggle-btn' + (on ? ' on' : '');
-    toast(on ? 'Music ON' : 'Music OFF');
+    toast(on ? '🎵 Music ON' : 'Music OFF');
   }
 
   function toggleTurbo() {
@@ -429,7 +443,7 @@ const UI = (() => {
     $('t-turbo').textContent = on ? 'ON' : 'OFF';
     $('t-turbo').className   = 'toggle-btn' + (on ? ' on' : '');
     E.niTurbo.className      = 'ni' + (on ? ' active' : '');
-    toast(on ? 'Turbo ON' : 'Turbo OFF');
+    toast(on ? '⚡ Turbo ON' : 'Turbo OFF');
   }
 
   function toggleFullscreen() {
@@ -439,22 +453,20 @@ const UI = (() => {
   }
 
   function saveLimits() {
-    const timeMins  = parseFloat($('rl-time')?.value || 60);
-    const lossLimit = parseFloat($('rl-loss')?.value || 500);
+    const timeMins  = parseFloat($('rl-time')?.value  || 60);
+    const lossLimit = parseFloat($('rl-loss')?.value  || 500);
     GameEngine.updateRGLimits({ timeMins, lossLimit });
     hideModal('modal-responsible');
   }
 
   /* ─────────────────────────────────────────
-   * AUTO SPIN START (called from modal button)
+   * AUTO SPIN
    * ───────────────────────────────────────── */
   function startAutoSpin() {
-    let selectedCount = 10;
-    const sel = document.querySelector('.count-chip.sel');
-    if (sel) selectedCount = parseInt(sel.dataset.n);
-
+    let sel = document.querySelector('.count-chip.sel');
+    const count = sel ? parseInt(sel.dataset.n) : 10;
     GameEngine.startAuto({
-      count:     selectedCount,
+      count,
       winLimit:  parseFloat($('auto-win-limit')?.value  || 500),
       lossLimit: parseFloat($('auto-loss-limit')?.value || 100),
     });
@@ -462,7 +474,7 @@ const UI = (() => {
   }
 
   /* ─────────────────────────────────────────
-   * DEPOSIT (demo — in prod this calls operator cashier)
+   * DEPOSIT (demo)
    * ───────────────────────────────────────── */
   function deposit(amount) {
     GameEngine.state.balance += amount;
@@ -481,22 +493,13 @@ const UI = (() => {
     const finalBal = await GameEngine.endSession();
     hideModal('modal-exit');
     try {
-      window.parent.postMessage({
-        type: 'GAME_EXIT',
-        balance: finalBal,
-        userId:  GameEngine.state.playerId,
-      }, '*');
-    } catch (e) {}
+      window.parent.postMessage({ type:'GAME_EXIT', balance:finalBal, userId:GameEngine.state.playerId }, '*');
+    } catch(e) {}
     toast('Returning to lobby…');
   }
 
   function reAuth() {
-    try {
-      window.parent.postMessage({
-        type: 'SESSION_EXPIRED',
-        userId: GameEngine.state.playerId,
-      }, '*');
-    } catch (e) {}
+    try { window.parent.postMessage({ type:'SESSION_EXPIRED', userId:GameEngine.state.playerId }, '*'); } catch(e) {}
     toast('Requesting new session…');
   }
 
@@ -504,12 +507,48 @@ const UI = (() => {
     hideModal('modal-connection');
     setNetwork('loading');
     GameEngine.resume().then(() => {
-      setNetwork('ok');
-      toast('Reconnected');
+      setNetwork('ok'); toast('Reconnected');
     }).catch(() => {
-      setNetwork('error');
-      showModal('modal-connection');
+      setNetwork('error'); showModal('modal-connection');
     });
+  }
+
+  /* ─────────────────────────────────────────
+   * BIG WIN MODAL — with image and rich presentation
+   * ───────────────────────────────────────── */
+
+  // Map win type to image to show in modal
+  const WIN_IMAGES = {
+    MEGA_WIN:  'assets/images/dynamite.jpg',
+    SUPER_WIN: 'assets/images/pickaxe.jpg',
+    BIG_WIN:   'assets/images/nugget.jpg',
+    WIN:       'assets/images/nugget.jpg',
+  };
+  const WIN_BADGE_LABELS = {
+    MEGA_WIN:  '🏆 MEGA WIN',
+    SUPER_WIN: '💎 SUPER WIN',
+    BIG_WIN:   '⛏️ BIG WIN',
+    WIN:       '💰 BIG WIN',
+  };
+
+  function showBigWinModal(winType, amount, sub, spinId) {
+    const title = WIN_BADGE_LABELS[winType] || 'BIG WIN';
+    $('win-modal-title').textContent  = title.replace(/^[^\s]+ /,''); // without emoji
+    $('win-modal-amount').textContent = 'R' + fmtI(amount);
+    $('win-modal-sub').textContent    = sub || '';
+    $('win-badge-label') && ($('win-badge-label').textContent = title);
+
+    // Set winning image
+    const imgEl = $('win-medal-img');
+    if (imgEl) imgEl.src = WIN_IMAGES[winType] || WIN_IMAGES.BIG_WIN;
+
+    if (spinId) {
+      $('win-verify').style.display = 'block';
+      $('win-spin-id').textContent  = spinId;
+    } else {
+      $('win-verify').style.display = 'none';
+    }
+    showModal('modal-win');
   }
 
   /* ─────────────────────────────────────────
@@ -517,7 +556,6 @@ const UI = (() => {
    * ───────────────────────────────────────── */
 
   GameEngine.on('ready', data => {
-    // Populate UI from session
     E.splUser.textContent = GameEngine.state.username;
     updateBalance(GameEngine.state.balance);
     updateBetDisplay();
@@ -525,20 +563,20 @@ const UI = (() => {
     buildPaytable();
     fillRandom();
 
-    // Loader out → game in
-    setLoadProgress(100, 'Ready');
+    setLoadProgress(100, 'Ready to play!');
     setTimeout(() => {
       E.loader.classList.add('out');
       E.game.classList.add('visible');
       updateBtnState();
       AudioEngine.startMusic();
-    }, 400);
+    }, 600);
   });
 
   GameEngine.on('betChanged', () => {
     updateBetDisplay();
     updateBtnState();
     buildBetChips();
+    AudioEngine.sfx.click();
   });
 
   GameEngine.on('spinStart', () => {
@@ -553,41 +591,44 @@ const UI = (() => {
   GameEngine.on('spinResult', async data => {
     setNetwork('ok');
 
-    // Animate reels with server result
     const grid = data.grid;
+    const totalDur = ANIM.spinTime;
     const promises = [];
+
     for (let c = 0; c < 6; c++) {
-      promises.push(spinReel(c, grid[c], c * ANIM.spinGap, ANIM.spinDur));
+      const delay = c * ANIM.reelDelay;
+      promises.push(spinReel(c, grid[c], delay, totalDur));
     }
+
     await Promise.all(promises);
+    await sleep(80);
 
-    // Short pause for drama
-    await sleep(60);
-
-    // Commit result
     GameEngine.applyResult(data);
     E.btnSpin.classList.remove('is-spinning');
 
-    // Show win
     if (data.totalWin > 0) {
-      E.wdAmount.textContent = fmtI(data.totalWin) + ' ZAR';
+      E.wdAmount.textContent = 'R' + fmtI(data.totalWin);
       E.winDisplay.classList.add('show');
-      showWinCells(data.winLines, GameEngine.state.cfg.paylines);
+      showWinCells(data.lineWins || data.winLines || [], GameEngine.state.cfg.paylines);
 
-      const bet = GameEngine.totalBet();
-      const mul = data.totalWin / (data.betPerLine || bet);
+      const tb  = GameEngine.totalBet() || (data.betPerLine * 10) || 25;
+      const mul = tb > 0 ? data.totalWin / tb : 0;
 
-      if (data.totalWin >= bet * 50) {
+      if (mul >= 50 || data.winType === 'MEGA_WIN') {
         AudioEngine.sfx.megaWin();
-        showCelebration('MEGA WIN', data.totalWin);
-        setTimeout(() => showBigWinModal('MEGA WIN', data.totalWin, '🦁 Maximum achievement!', data.spinId), 2000);
-      } else if (data.totalWin >= bet * 20) {
+        showCelebration('MEGA_WIN', data.totalWin);
+        setTimeout(() => showBigWinModal('MEGA_WIN', data.totalWin,
+          '🏆 Maximum achievement unlocked!', data.spinId), 2200);
+      } else if (mul >= 20 || data.winType === 'SUPER_WIN') {
         AudioEngine.sfx.bigWin();
-        showCelebration('BIG WIN', data.totalWin);
-        setTimeout(() => showBigWinModal('BIG WIN', data.totalWin, data.isFreeSpinRound ? `Includes ×${data.fsMultiplier} Free Spin multiplier` : '', data.spinId), 1800);
-      } else if (data.totalWin >= bet * 8) {
+        showCelebration('SUPER_WIN', data.totalWin);
+        setTimeout(() => showBigWinModal('SUPER_WIN', data.totalWin,
+          data.isFreeSpinRound ? `Includes ×${data.fsMultiplier} Free Spin multiplier` : '', data.spinId), 2000);
+      } else if (mul >= 8 || data.winType === 'BIG_WIN') {
         AudioEngine.sfx.bigWin();
-        showCelebration('GREAT WIN', data.totalWin);
+        showCelebration('BIG_WIN', data.totalWin);
+        setTimeout(() => showBigWinModal('BIG_WIN', data.totalWin,
+          data.isFreeSpinRound ? `Includes ×${data.fsMultiplier} multiplier` : '', data.spinId), 1800);
       } else {
         AudioEngine.sfx.smallWin();
       }
@@ -600,10 +641,9 @@ const UI = (() => {
         $('bonus-count').textContent = GameEngine.state.cfg.freeSpins.count;
         $('bonus-mul').textContent   = GameEngine.state.fsMul + '×';
         showModal('modal-bonus');
-      }, data.totalWin > 0 ? 800 : 200);
+      }, data.totalWin > 0 ? 900 : 250);
     }
 
-    // FS round update
     if (data.isFreeSpinRound) {
       updateFsHud(data.freeSpinsLeft, data.fsMultiplier || 3);
     }
@@ -619,7 +659,7 @@ const UI = (() => {
     AudioEngine.sfx.error();
     if (code === 'NETWORK_ERROR') {
       showModal('modal-connection');
-    } else if (code === 'INSUFFICIENT_BALANCE') {
+    } else if (code === 'INSUFFICIENT_BALANCE' || code === 'INSUFFICIENT_FUNDS') {
       showModal('modal-insufficient');
     } else {
       toast('Error: ' + message);
@@ -629,21 +669,21 @@ const UI = (() => {
   GameEngine.on('freeSpinsBegin', ({ count, multiplier }) => {
     AudioEngine.sfx.freeSpinsStart();
     updateFsHud(count, multiplier);
-    toast(`${count} Free Spins — ×${multiplier} Multiplier active`);
+    toast(`${count} Free Spins — ×${multiplier} Multiplier active!`);
   });
 
-  GameEngine.on('freeSpinsEnd', ({ total }) => {
+  GameEngine.on('freeSpinsEnd', ({ totalWin }) => {
     updateFsHud(0, 3);
     AudioEngine.sfx.bonusCollect();
-    $('fs-end-amount').textContent = fmtI(total);
-    setTimeout(() => showModal('modal-fs-end'), 600);
-    spawnConfetti(40);
+    $('fs-end-amount').textContent = 'R' + fmtI(totalWin || 0);
+    setTimeout(() => showModal('modal-fs-end'), 700);
+    spawnConfetti(45);
   });
 
   GameEngine.on('autoStarted', ({ count }) => {
     E.btnStop.classList.add('show');
     E.niAuto.classList.add('active');
-    toast(`Auto spin: ${count} spins`);
+    toast(`Auto Spin: ${count} spins`);
   });
 
   GameEngine.on('autoStopped', () => {
@@ -652,7 +692,7 @@ const UI = (() => {
   });
 
   GameEngine.on('stateUpdated', ({ balance }) => {
-    updateBalance(balance);
+    if (balance !== undefined) updateBalance(balance);
     updateBtnState();
   });
 
@@ -661,46 +701,20 @@ const UI = (() => {
   });
 
   GameEngine.on('rgLimit', ({ type }) => {
-    if (type === 'time') {
-      toast('Session time limit reached');
-      showModal('modal-responsible');
-    } else if (type === 'loss') {
-      toast('Session loss limit reached');
-      showModal('modal-responsible');
-    }
+    if (type === 'time')  { toast('Session time limit reached'); showModal('modal-responsible'); }
+    else if (type === 'loss') { toast('Session loss limit reached'); showModal('modal-responsible'); }
   });
 
-  GameEngine.on('sessionExpired', () => {
-    showModal('modal-session');
-  });
-
-  GameEngine.on('gamePaused', () => {
-    showModal('modal-pause');
-  });
-
-  GameEngine.on('toast', ({ msg }) => toast(msg));
+  GameEngine.on('sessionExpired', () => showModal('modal-session'));
+  GameEngine.on('gamePaused',     () => showModal('modal-pause'));
+  GameEngine.on('toast',   ({ msg }) => toast(msg));
+  GameEngine.on('insufficientFunds', () => showModal('modal-insufficient'));
 
   GameEngine.on('error', ({ code, message }) => {
     setNetwork('error');
     E.ldStatus.textContent = 'Error: ' + message;
     console.error('[GameEngine]', code, message);
   });
-
-  /* ─────────────────────────────────────────
-   * BIG WIN MODAL
-   * ───────────────────────────────────────── */
-  function showBigWinModal(title, amount, sub, spinId) {
-    $('win-modal-title').textContent  = title;
-    $('win-modal-amount').textContent = fmtI(amount);
-    $('win-modal-sub').textContent    = sub || '';
-    if (spinId) {
-      $('win-verify').style.display = 'block';
-      $('win-spin-id').textContent  = spinId;
-    } else {
-      $('win-verify').style.display = 'none';
-    }
-    showModal('modal-win');
-  }
 
   /* ─────────────────────────────────────────
    * LOADER PROGRESS
@@ -710,14 +724,23 @@ const UI = (() => {
     E.ldStatus.textContent = status || '';
   }
 
+  GameEngine.on('loading', ({ phase, progress }) => {
+    const labels = {
+      session:  'Connecting to server…',
+      assets:   'Loading assets…',
+      complete: 'Almost ready…',
+    };
+    setLoadProgress(progress, labels[phase] || 'Loading…');
+  });
+
   /* ─────────────────────────────────────────
    * EVENT BINDINGS
    * ───────────────────────────────────────── */
   function bindEvents() {
     // Spin
     E.btnSpin.addEventListener('click', () => {
-      AudioEngine.sfx.click();
       AudioEngine.resume();
+      AudioEngine.sfx.click();
       if (GameEngine.state.balance < GameEngine.totalBet()) {
         showModal('modal-insufficient');
         return;
@@ -735,22 +758,20 @@ const UI = (() => {
     $('bet-up').addEventListener('click', e => {
       e.stopPropagation();
       GameEngine.adjustBet(1);
-      AudioEngine.sfx.click();
     });
     $('bet-dn').addEventListener('click', e => {
       e.stopPropagation();
       GameEngine.adjustBet(-1);
-      AudioEngine.sfx.click();
     });
 
     // Nav icons
-    $('ni-menu').addEventListener('click',     () => { AudioEngine.sfx.click(); showModal('modal-menu');    });
-    $('ni-info').addEventListener('click',     () => { AudioEngine.sfx.click(); showModal('modal-paytable');});
-    $('ni-history').addEventListener('click',  () => { AudioEngine.sfx.click(); showModal('modal-history'); });
-    $('ni-settings').addEventListener('click', () => { AudioEngine.sfx.click(); showModal('modal-settings');});
+    $('ni-menu').addEventListener('click',     () => { AudioEngine.sfx.click(); showModal('modal-menu');     });
+    $('ni-info').addEventListener('click',     () => { AudioEngine.sfx.click(); showModal('modal-paytable'); });
+    $('ni-history').addEventListener('click',  () => { AudioEngine.sfx.click(); showModal('modal-history');  });
+    $('ni-settings').addEventListener('click', () => { AudioEngine.sfx.click(); showModal('modal-settings'); });
     $('ni-sound').addEventListener('click',    () => toggleSound());
-    $('ni-turbo').addEventListener('click',    () => { AudioEngine.sfx.click(); toggleTurbo();              });
-    $('ni-auto').addEventListener('click',     () => { AudioEngine.sfx.click(); showModal('modal-autospin');});
+    $('ni-turbo').addEventListener('click',    () => { AudioEngine.sfx.click(); toggleTurbo(); });
+    $('ni-auto').addEventListener('click',     () => { AudioEngine.sfx.click(); showModal('modal-autospin'); });
 
     // Auto count chips
     document.querySelectorAll('.count-chip').forEach(chip => {
@@ -761,9 +782,10 @@ const UI = (() => {
       });
     });
 
-    // First interaction — resume audio context
-    document.addEventListener('click',      () => AudioEngine.resume(), { once: true, passive: true });
-    document.addEventListener('touchstart', () => AudioEngine.resume(), { once: true, passive: true });
+    // First interaction — unlock audio
+    const firstInteract = () => { AudioEngine.resume(); };
+    document.addEventListener('click',      firstInteract, { once:true, passive:true });
+    document.addEventListener('touchstart', firstInteract, { once:true, passive:true });
   }
 
   /* ─────────────────────────────────────────
@@ -779,42 +801,39 @@ const UI = (() => {
     buildGrid();
     bindEvents();
 
-    // Progressive loader
-    setLoadProgress(20, 'Initialising…');
+    setLoadProgress(15, 'Initialising…');
 
-    // Preload symbol images
+    // Preload images
     const syms = GameEngine.symbols;
-    const imgPromises = Object.values(syms).map(s => new Promise(res => {
+    const imgPs = Object.values(syms).map(s => new Promise(res => {
       const img = new Image();
       img.onload = img.onerror = res;
       img.src = s.src;
     }));
-    setLoadProgress(40, 'Loading assets…');
-    await Promise.all(imgPromises);
+    setLoadProgress(35, 'Loading assets…');
+    await Promise.all(imgPs);
 
-    setLoadProgress(70, 'Connecting to server…');
+    setLoadProgress(65, 'Connecting…');
     setNetwork('loading');
 
-    // Initial balance from query string or default
-    const startBal = parseFloat(new URLSearchParams(window.location.search).get('balance') || '2000');
+    const startBal = parseFloat(new URLSearchParams(window.location.search).get('balance') || '2500');
 
     try {
       await GameEngine.init(startBal);
       setNetwork('ok');
-    } catch (err) {
+    } catch(err) {
       setLoadProgress(100, 'Connection failed');
       setNetwork('error');
-      // Show error after a moment
       setTimeout(() => {
         E.loader.classList.add('out');
         E.game.classList.add('visible');
         showModal('modal-connection');
-      }, 1000);
+      }, 1200);
     }
   }
 
   /* ─────────────────────────────────────────
-   * PUBLIC
+   * PUBLIC API
    * ───────────────────────────────────────── */
   return {
     init,
@@ -833,8 +852,7 @@ const UI = (() => {
     reAuth,
     retryConnection,
   };
-
 })();
 
-// Boot
 document.addEventListener('DOMContentLoaded', () => UI.init());
+

@@ -13,13 +13,13 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <!-- Game CSS -->
 <link rel="stylesheet" href="css/game.css">
-
+<link rel="stylesheet" href="css/responsive-fixes.css"> 
 <script>
   window.JOZI_API_BASE    = '/api';
   window.JOZI_API_TIMEOUT = 10000;
-  window.BIG5_MOCK        = true;   // ← set false in production
+  window.BIG5_MOCK        = true;   
   window.BIG5_API_BASE    = '/api';
-  window.JOZI_MUSIC_SRC   = null;   // ← set to '/audio/jozi-theme.ogg' in production
+  window.JOZI_MUSIC_SRC   = '/assets/sound/slot machine.mp3';   // ← set to '/audio/jozi-theme.ogg' in production
 </script>
 </head>
 <body>
@@ -455,6 +455,7 @@
 <script src="js/audio.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/bootstrap.js"></script>
 
 </body>
 </html>

@@ -1,0 +1,535 @@
+/* ═══════════════════════════════════════════════════════════════
+   Johanesburg Gold Rush · Responsive Fixes
+   Fixes: mobile bottom nav cramping + desktop canvas oversizing
+   Add this AFTER game.css (it overrides with higher specificity)
+   ═══════════════════════════════════════════════════════════════ */
+
+
+/* ── DESKTOP CANVAS CONSTRAINT ───────────────────────────────────
+   On large screens the reel frame was expanding to fill all space.
+   Cap it so the game breathes and nothing overflows vertically.
+───────────────────────────────────────────────────────────────── */
+
+/* All screens — baseline grid / flex safety */
+.reels-grid {
+  /* Ensure cells never collapse to 0 height on wide viewports */
+  min-height: 0;
+}
+
+/* ── LARGE DESKTOP (1280px+) ────────────────────────────────────
+   Constrain the canvas so the reel frame sits centred with
+   comfortable breathing room, and the cell icons don't become huge.
+────────────────────────────────────────────────────────────────── */
+@media (min-width: 1280px) {
+  :root { --nav-h: 92px; }
+
+  .canvas-area {
+    padding: 52px 40px 8px;
+    align-items: center;        /* vertically centre the frame */
+  }
+
+  .reels-outer {
+    max-width: 740px;           /* pull it in from the 820px default */
+  }
+
+  .reel-cell .sym-img {
+    width: 68%;
+    height: 68%;
+  }
+
+  .frame-title {
+    font-size: 11px;
+  }
+}
+
+/* ── MEDIUM DESKTOP / LAPTOP (900px – 1279px) ───────────────────── */
+@media (min-width: 900px) and (max-width: 1279px) {
+  :root { --nav-h: 90px; }
+
+  .canvas-area {
+    padding: 48px 24px 6px;
+  }
+
+  .reels-outer {
+    max-width: 680px;
+  }
+
+  .reel-cell .sym-img {
+    width: 72%;
+    height: 72%;
+  }
+}
+
+/* ── TABLET LANDSCAPE (768px – 899px) ──────────────────────────── */
+@media (min-width: 768px) and (max-width: 899px) {
+  :root { --nav-h: 86px; }
+
+  .canvas-area {
+    padding: 44px 16px 4px;
+  }
+
+  .reels-outer {
+    max-width: 620px;
+  }
+
+  .reel-cell .sym-img {
+    width: 74%;
+    height: 74%;
+  }
+
+  /* Nav — keep everything comfortably spaced on tablet */
+  .nav-icons {
+    gap: 0;
+    padding: 4px 5px;
+  }
+
+  .ni {
+    width: 36px;
+    height: 36px;
+    font-size: 13px;
+  }
+
+  .bet-val {
+    font-size: 18px;
+  }
+
+  .spin-btn {
+    width: 58px;
+    height: 58px;
+  }
+
+  .spin-btn svg {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* ── TABLET PORTRAIT (601px – 767px) ───────────────────────────── */
+@media (min-width: 601px) and (max-width: 767px) {
+  :root { --nav-h: 82px; }
+
+  .canvas-area {
+    padding: 42px 12px 4px;
+  }
+
+  .reels-outer {
+    max-width: 560px;
+  }
+
+  .reel-cell .sym-img {
+    width: 74%;
+    height: 74%;
+  }
+
+  /* Nav */
+  .bot-nav {
+    padding: 0 10px;
+    gap: 8px;
+  }
+
+  .nav-icons {
+    padding: 4px 5px;
+    gap: 0;
+  }
+
+  .ni {
+    width: 34px;
+    height: 34px;
+    font-size: 13px;
+  }
+
+  /* Hide lowest-priority icons to prevent wrap */
+  .ni#ni-turbo,
+  .ni#ni-auto {
+    display: none;
+  }
+
+  .ni-sep:last-of-type {
+    display: none;
+  }
+
+  .bet-val {
+    font-size: 18px;
+  }
+
+  .spin-btn {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   MOBILE FIXES — the main problem area
+   Target: phones ≤ 600px wide
+══════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 600px) {
+  /* ── Spacing / layout ─────────────────────────────── */
+  :root { --nav-h: 80px; }
+
+  .canvas-area {
+    padding: 40px 8px 4px;
+  }
+
+  .reels-outer {
+    max-width: 100%;            /* full bleed on mobile */
+    border-radius: 14px;
+    padding: 3px;
+  }
+
+  .reels-inner {
+    border-radius: 11px;
+  }
+
+  .reel-cell .sym-img {
+    width: 78%;
+    height: 78%;
+  }
+
+  /* ── Bottom nav full overhaul ─────────────────────── */
+  .bot-nav {
+    height: var(--nav-h);
+    padding: 0 8px;
+    gap: 6px;
+    flex-wrap: nowrap;          /* single row, never wrap */
+    align-items: center;
+  }
+
+  /* Icon pill — only show the 3 most important icons */
+  .nav-icons {
+    padding: 3px 4px;
+    gap: 0;
+    flex-shrink: 0;
+  }
+
+  .ni {
+    width: 32px;
+    height: 32px;
+    font-size: 13px;
+  }
+
+  /* Hide all icon buttons except menu, info, sound */
+  .ni#ni-settings,
+  .ni#ni-history,
+  .ni#ni-turbo,
+  .ni#ni-auto,
+  .ni-sep {
+    display: none;
+  }
+
+  /* Balance — slightly tighter */
+  .nav-balance {
+    flex: 1;
+    min-width: 0;               /* allow shrinking */
+  }
+
+  .nb-lbl {
+    font-size: 7px;
+    letter-spacing: 3px;
+  }
+
+  .nb-val {
+    font-size: clamp(16px, 5vw, 22px);
+    line-height: 1;
+  }
+
+  .nb-cur {
+    font-size: 7px;
+    letter-spacing: 2px;
+  }
+
+  /* Bet control — compact */
+  .nav-right {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .nav-bet {
+    padding: 3px 7px;
+    gap: 4px;
+  }
+
+  .bet-pm {
+    width: 28px;
+    height: 28px;
+    font-size: 17px;
+    flex-shrink: 0;
+  }
+
+  .bet-mid {
+    min-width: 40px;
+  }
+
+  .bet-lbl {
+    font-size: 6px;
+    letter-spacing: 1px;
+  }
+
+  .bet-val {
+    font-size: 16px;
+    line-height: 1.1;
+  }
+
+  /* Spin button */
+  .spin-btn {
+    width: 52px;
+    height: 52px;
+    flex-shrink: 0;
+  }
+
+  .spin-btn svg {
+    width: 26px;
+    height: 26px;
+  }
+
+  .stop-btn {
+    width: 52px;
+    height: 52px;
+    font-size: 15px;
+  }
+}
+
+/* ── VERY SMALL PHONES (≤ 380px — iPhone SE, Galaxy A etc.) ─────── */
+@media (max-width: 380px) {
+  :root { --nav-h: 76px; }
+
+  .bot-nav {
+    padding: 0 6px;
+    gap: 4px;
+  }
+
+  /* Collapse icon pill to just menu icon */
+  .ni#ni-info,
+  .ni#ni-sound {
+    display: none;
+  }
+
+  .nav-icons {
+    padding: 3px;
+  }
+
+  .ni#ni-menu {
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
+  }
+
+  .nb-val {
+    font-size: clamp(14px, 4.5vw, 18px);
+  }
+
+  .nav-bet {
+    padding: 2px 6px;
+    gap: 3px;
+  }
+
+  .bet-pm {
+    width: 24px;
+    height: 24px;
+    font-size: 15px;
+  }
+
+  .bet-val {
+    font-size: 15px;
+  }
+
+  .bet-mid {
+    min-width: 36px;
+  }
+
+  .spin-btn {
+    width: 48px;
+    height: 48px;
+  }
+
+  .spin-btn svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .stop-btn {
+    width: 48px;
+    height: 48px;
+    font-size: 14px;
+  }
+
+  /* Tighter reel cells on tiny screens */
+  .reel-cell .sym-img {
+    width: 80%;
+    height: 80%;
+  }
+
+  .frame-title {
+    font-size: 8px;
+    letter-spacing: 4px;
+    padding: 8px 0 5px;
+  }
+}
+
+/* ── LANDSCAPE PHONES (short but wide — e.g. iPhone SE landscape) ── */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root { --nav-h: 66px; }
+
+  .canvas-area {
+    padding: 32px 8px 2px;
+  }
+
+  .frame-title {
+    padding: 6px 0 4px;
+    font-size: 8px;
+  }
+
+  .win-display {
+    min-height: 28px;
+    padding-bottom: 4px;
+  }
+
+  .pl-row {
+    padding-top: 6px;
+  }
+
+  .wd-amount {
+    font-size: clamp(14px, 2.5vw, 20px);
+  }
+
+  /* Nav tighter */
+  .bot-nav {
+    height: var(--nav-h);
+    padding: 0 8px;
+  }
+
+  .spin-btn {
+    width: 48px;
+    height: 48px;
+  }
+
+  .spin-btn svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .nb-val {
+    font-size: clamp(14px, 3vw, 18px);
+  }
+
+  /* Allow reels to breathe horizontally in landscape */
+  .reels-outer {
+    max-width: min(620px, 90vw);
+  }
+}
+
+/* ── SHORT DESKTOP BROWSER WINDOWS (height < 700px) ─────────────── */
+@media (min-width: 601px) and (max-height: 700px) {
+  .canvas-area {
+    padding-top: 36px;
+    padding-bottom: 2px;
+  }
+
+  .frame-title {
+    padding: 7px 0 5px;
+  }
+
+  .win-display {
+    min-height: 34px;
+    padding-bottom: 5px;
+  }
+
+  .pl-row {
+    padding-top: 10px;
+  }
+
+  :root { --nav-h: 76px; }
+}
+
+/* ── MODALS — mobile full-height safety ──────────────────────────── */
+@media (max-width: 600px) {
+  .modal-overlay {
+    padding: 10px;
+    align-items: flex-end;      /* sheet slides from bottom on mobile */
+  }
+
+  .modal {
+    max-height: 80vh;
+    border-radius: 20px 20px 14px 14px;
+    padding: 28px 18px 24px;
+    /* Pull the transform origin down for the slide-up feel */
+    transform: translateY(24px) scale(1);
+    transition: transform .25s cubic-bezier(.34,1.08,.64,1);
+  }
+
+  .modal-overlay.active .modal {
+    transform: translateY(0) scale(1);
+  }
+
+  .deposit-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .menu-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+  }
+
+  .stats-bar {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+  }
+}
+
+/* ── SESSION PILL + FREE SPINS HUD — overlap fix on tiny screens ─── */
+@media (max-width: 420px) {
+  .session-pill {
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 3px 12px;
+    gap: 6px;
+  }
+
+  .fs-hud {
+    padding: 6px 10px;
+    top: 8px;
+    right: 10px;
+  }
+
+  .fs-hud-num {
+    font-size: 20px;
+  }
+
+  .fs-mul-badge {
+    top: 8px;
+    left: 10px;
+    padding: 4px 8px;
+  }
+
+  .fmb-val {
+    font-size: 18px;
+  }
+}
+
+/* ── WIN CELEBRATION — scale to screen ──────────────────────────── */
+@media (max-width: 600px) {
+  .cel-title {
+    font-size: clamp(32px, 10vw, 60px);
+  }
+
+  .cel-amount {
+    font-size: clamp(26px, 7vw, 48px);
+  }
+
+  .cel-win-icon {
+    font-size: clamp(48px, 13vw, 90px);
+  }
+}
+
+/* ── TOAST — clear of the nav bar ───────────────────────────────── */
+@media (max-width: 600px) {
+  #toast {
+    bottom: calc(var(--nav-h) + 12px);
+    font-size: 12px;
+    padding: 7px 16px;
+    max-width: calc(100vw - 32px);
+    white-space: normal;
+    text-align: center;
+  }
+}

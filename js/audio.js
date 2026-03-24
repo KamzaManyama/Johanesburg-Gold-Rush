@@ -1,291 +1,231 @@
 /**
- * Johanesburg Gold Rush — Audio Engine
- * Web Audio API synthesiser + asset loader.
- * Replace synth sounds with real .ogg/.mp3 files by setting AUDIO_BASE.
+ * Johannesburg Gold Rush — Audio Engine (Real Audio Version)
+ * Handles preloading, overlapping playback, autoplay unlock, and volume controls.
  */
 
 'use strict';
 
 const AudioEngine = (() => {
+    // ------------------- CONFIGURATION -------------------
+    // Path to sound files (adjust if needed, or override via window.JOZI_AUDIO_BASE)
+    const DEFAULT_AUDIO_BASE = '../assets/sound/';
+    const AUDIO_BASE = window.JOZI_AUDIO_BASE || DEFAULT_AUDIO_BASE;
 
-  let ctx = null;
-  let masterGain = null;
-  let sfxGain    = null;
-  let musicGain  = null;
+    // Sound file mapping (key → filename)
+    const SOUND_FILES = {
+        click:      'click.mp3',
+        spinStart:  'slot-machine.mp3',
+        reelTick:   'mixkit-melodic-gold-price-2000.wav',
+        reelStop:   'mixkit-payout-award-1934.wav',
+        smallWin:   'winning-reward-1983.wav',
+        bigWin:     'mixkit-slot-machine-win-siren-1929.wav',
+        megaWin:    'mixkit-payout-award-1934.wav',
+        scatter:    'wild.mp3',
+        freeSpins:  'mixkit-melodic-gold-price-2000.wav',
+        bonus:      'mixkit-payout-award-1934.wav',
+        deposit:    'mixkit-melodic-gold-price-2000.wav',
+        error:      'mixkit-slot-machine-win-siren-1929.wav',
+        countdown:  'click.mp3',
+        bg:         'oosongoo-background-music-224633.mp3'
+    };
 
-  let soundEnabled = true;
-  let musicEnabled = true;
+    // ------------------- PRIVATE STATE -------------------
+    let soundEnabled = true;
+    let musicEnabled = true;
+    let globalSfxVolume = 0.8;
+    let globalMusicVolume = 0.3;
 
-  let bgLoop = null;
+    const soundCache = {};          // preloaded <audio> elements (one per key)
+    let musicElement = null;        // background music element (single instance)
+    let unlockContext = null;       // silent AudioContext to unlock audio
+    let isUnlocked = false;
 
-  function init() {
-    if (ctx) return;
-    try {
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
-      masterGain = ctx.createGain(); masterGain.gain.value = 0.85;
-      sfxGain    = ctx.createGain(); sfxGain.gain.value    = 1.0;
-      musicGain  = ctx.createGain(); musicGain.gain.value  = 0.28;
-      sfxGain.connect(masterGain);
-      musicGain.connect(masterGain);
-      masterGain.connect(ctx.destination);
-    } catch (e) {
-      console.warn('[Audio] WebAudio not available', e);
-    }
-  }
-
-  function resume() {
-    if (ctx && ctx.state === 'suspended') ctx.resume();
-  }
-
-  function tone(freq, dur = 0.08, vol = 0.15, type = 'sine', dest = sfxGain) {
-    if (!ctx || !soundEnabled) return;
-    try {
-      const osc = ctx.createOscillator();
-      const env = ctx.createGain();
-      osc.connect(env); env.connect(dest);
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      env.gain.setValueAtTime(vol, ctx.currentTime);
-      env.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + dur + 0.01);
-    } catch (e) {}
-  }
-
-  function noise(dur = 0.06, vol = 0.05) {
-    if (!ctx || !soundEnabled) return;
-    try {
-      const bufLen = ctx.sampleRate * dur;
-      const buf    = ctx.createBuffer(1, bufLen, ctx.sampleRate);
-      const data   = buf.getChannelData(0);
-      for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
-      const src  = ctx.createBufferSource();
-      const filt = ctx.createBiquadFilter();
-      const env  = ctx.createGain();
-      src.buffer = buf;
-      filt.type  = 'bandpass'; filt.frequency.value = 800; filt.Q.value = 0.6;
-      src.connect(filt); filt.connect(env); env.connect(sfxGain);
-      env.gain.setValueAtTime(vol, ctx.currentTime);
-      env.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
-      src.start(); src.stop(ctx.currentTime + dur + 0.01);
-    } catch (e) {}
-  }
-
-  /* SFX — Gold Rush themed sounds */
-  const SFX = {
-    click() {
-      tone(600, 0.04, 0.10, 'square');
-    },
-
-    spinStart() {
-      resume();
-      // Mechanical reel crank sound
-      [80, 100, 130, 160].forEach((f, i) =>
-        setTimeout(() => { tone(f, 0.08, 0.12, 'sawtooth'); noise(0.04, 0.04); }, i * 35)
-      );
-    },
-
-    // Gold Rush reel tick — metallic clank
-    reelTick() {
-      const freq = 200 + Math.random() * 120;
-      tone(freq, 0.025, 0.08, 'square');
-      noise(0.02, 0.06);
-    },
-
-    // Heavy thud when reel stops — like a mine cart stopping
-    reelStop(reelIdx) {
-      const base = 130 + reelIdx * 18;
-      tone(base, 0.12, 0.22, 'sine');
-      tone(base * 0.75, 0.08, 0.12, 'triangle');
-      noise(0.06, 0.10);
-      // Metal ring
-      setTimeout(() => tone(base * 3, 0.08, 0.06, 'sine'), 40);
-    },
-
-    smallWin() {
-      // Coins falling
-      [523, 587, 659, 784].forEach((f, i) =>
-        setTimeout(() => { tone(f, 0.12, 0.18, 'sine'); noise(0.04, 0.03); }, i * 80)
-      );
-    },
-
-    bigWin() {
-      // Gold rush fanfare
-      [392, 523, 659, 784, 1047, 1319].forEach((f, i) =>
-        setTimeout(() => { tone(f, 0.22, 0.20, 'sine'); tone(f * 1.5, 0.12, 0.06, 'triangle'); }, i * 100)
-      );
-    },
-
-    megaWin() {
-      [261, 392, 523, 659, 784, 1047, 1175, 1319, 1568].forEach((f, i) =>
-        setTimeout(() => { tone(f, 0.28, 0.22, 'sine'); tone(f * 2, 0.18, 0.08, 'triangle'); }, i * 80)
-      );
-      setTimeout(() => noise(0.3, 0.10), 300);
-    },
-
-    scatterLand() {
-      // Dynamite fuse sound
-      noise(0.15, 0.12);
-      setTimeout(() => { tone(440, 0.25, 0.25, 'sine'); tone(660, 0.18, 0.14, 'sine'); }, 150);
-    },
-
-    freeSpinsStart() {
-      // Mine shaft echo melody
-      const melody = [261, 329, 392, 523, 659, 784, 880, 1047];
-      melody.forEach((f, i) =>
-        setTimeout(() => tone(f, 0.28, 0.20, 'sine'), i * 130)
-      );
-    },
-
-    bonusCollect() {
-      [330, 415, 523, 659, 880].forEach((f, i) =>
-        setTimeout(() => { tone(f, 0.18, 0.18, 'sine'); noise(0.03, 0.02); }, i * 75)
-      );
-    },
-
-    deposit() {
-      [392, 523, 659, 784].forEach((f, i) =>
-        setTimeout(() => tone(f, 0.14, 0.18, 'sine'), i * 75)
-      );
-    },
-
-    error() {
-      tone(180, 0.20, 0.18, 'sawtooth');
-      setTimeout(() => tone(140, 0.25, 0.14, 'sawtooth'), 160);
-    },
-
-    countdown() {
-      tone(440, 0.08, 0.12, 'square');
-    },
-  };
-
-  /* Background Music — Western/Gold Rush feel */
-  const MUSIC_SRC = window.JOZI_MUSIC_SRC || null;
-  let musicAudioEl = null;
-
-  // Western pentatonic progression
-  const CHORDS = [
-    [146.83, 196.00, 246.94],  // D3 G3 B3
-    [164.81, 220.00, 261.63],  // E3 A3 C4
-    [130.81, 174.61, 220.00],  // C3 F3 A3
-    [146.83, 195.00, 246.94],  // D3 ~G3 B3
-  ];
-  const BASS_NOTES = [73.42, 82.41, 65.41, 73.42];    // D2 E2 C2 D2
-  const LEAD_NOTES = [587.33, 659.25, 523.25, 587.33]; // D5 E5 C5 D5
-
-  function startMusic() {
-    if (!musicEnabled) return;
-    init(); resume();
-
-    if (MUSIC_SRC) {
-      if (!musicAudioEl) {
-        musicAudioEl = new Audio(MUSIC_SRC);
-        musicAudioEl.loop = true;
-        musicAudioEl.volume = 0.3;
-      }
-      musicAudioEl.play().catch(() => startSynthMusic());
-      return;
-    }
-    startSynthMusic();
-  }
-
-  function startSynthMusic() {
-    if (bgLoop || !ctx || !musicEnabled) return;
-    let beat = 0;
-
-    function playBeat() {
-      if (!musicEnabled) { stopMusic(); return; }
-      const ci    = Math.floor(beat / 2) % CHORDS.length;
-      const chord = CHORDS[ci];
-      const bass  = BASS_NOTES[ci];
-      const lead  = LEAD_NOTES[ci];
-
-      chord.forEach(f => {
-        if (!ctx) return;
-        const osc = ctx.createOscillator();
-        const env = ctx.createGain();
-        osc.connect(env); env.connect(musicGain);
-        osc.type = 'triangle'; osc.frequency.value = f;
-        const t = ctx.currentTime;
-        env.gain.setValueAtTime(0.001, t);
-        env.gain.linearRampToValueAtTime(0.035, t + 0.25);
-        env.gain.linearRampToValueAtTime(0.001, t + 1.4);
-        osc.start(t); osc.stop(t + 1.8);
-      });
-
-      if (beat % 2 === 0) {
-        const osc = ctx.createOscillator();
-        const env = ctx.createGain();
-        osc.connect(env); env.connect(musicGain);
-        osc.type = 'sine'; osc.frequency.value = bass;
-        const t = ctx.currentTime;
-        env.gain.setValueAtTime(0.08, t);
-        env.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
-        osc.start(t); osc.stop(t + 0.8);
-      }
-
-      if (beat % 4 === 2 && Math.random() > 0.35) {
-        const osc = ctx.createOscillator();
-        const env = ctx.createGain();
-        osc.connect(env); env.connect(musicGain);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(lead, ctx.currentTime);
-        osc.frequency.linearRampToValueAtTime(lead * (Math.random() > 0.5 ? 1.06 : 0.94), ctx.currentTime + 0.35);
-        const t = ctx.currentTime;
-        env.gain.setValueAtTime(0.04, t);
-        env.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
-        osc.start(t); osc.stop(t + 0.7);
-      }
-
-      // Percussion — boot stomp feel
-      if (beat % 2 === 0) noise(0.06, 0.04);
-      if (beat % 4 === 2) { noise(0.025, 0.02); }
-
-      beat++;
+    // ------------------- HELPER: PRELOAD SOUNDS -------------------
+    function preloadSounds() {
+        for (const [name, file] of Object.entries(SOUND_FILES)) {
+            const path = AUDIO_BASE + file;
+            const audio = new Audio(path);
+            audio.preload = 'auto';
+            audio.volume = globalSfxVolume;
+            audio.addEventListener('error', () => {
+                console.warn(`[AudioEngine] Failed to load: ${name} (${path})`);
+            });
+            soundCache[name] = audio;
+        }
+        console.log('[AudioEngine] All sounds preloaded.');
     }
 
-    playBeat();
-    bgLoop = setInterval(playBeat, 1600);
-  }
+    // ------------------- UNLOCK AUDIO (user interaction) -------------------
+    function unlockAudio() {
+        if (isUnlocked) return;
+        try {
+            // Create a silent AudioContext – this unlocks audio on most browsers
+            unlockContext = new (window.AudioContext || window.webkitAudioContext)();
+            const silentBuffer = unlockContext.createBuffer(1, 1, 22050);
+            const source = unlockContext.createBufferSource();
+            source.buffer = silentBuffer;
+            source.connect(unlockContext.destination);
+            source.start();
+            unlockContext.resume().then(() => {
+                isUnlocked = true;
+                console.log('[AudioEngine] Audio unlocked.');
+                // If music should be playing, start it now
+                if (musicEnabled && musicElement && musicElement.paused) {
+                    musicElement.play().catch(e => console.warn('Music play after unlock:', e));
+                }
+            }).catch(e => console.warn('Failed to resume unlock context:', e));
+        } catch (e) {
+            console.warn('[AudioEngine] Web Audio not supported – no auto‑unlock.');
+            isUnlocked = true; // fallback – assume unlocked
+        }
+    }
 
-  function stopMusic() {
-    if (bgLoop) { clearInterval(bgLoop); bgLoop = null; }
-    if (musicAudioEl) { musicAudioEl.pause(); }
-  }
+    // ------------------- PLAY SFX (with overlapping support) -------------------
+    function playSFX(name, volume = 1.0) {
+        if (!soundEnabled) return;
+        if (!isUnlocked) {
+            // If not unlocked yet, we'll try to play anyway – might be blocked.
+            // Avoid spamming console.
+            return;
+        }
 
-  function setSound(on) {
-    soundEnabled = on;
-    if (sfxGain) sfxGain.gain.value = on ? 1.0 : 0;
-  }
+        const original = soundCache[name];
+        if (!original) {
+            console.warn(`[AudioEngine] Sound not found: ${name}`);
+            return;
+        }
 
-  function setMusic(on) {
-    musicEnabled = on;
-    if (on) startMusic();
-    else    stopMusic();
-    if (musicGain) musicGain.gain.value = on ? 0.28 : 0;
-  }
+        // Clone the preloaded element to allow overlapping playback
+        const clone = original.cloneNode();
+        clone.volume = volume * globalSfxVolume;
+        clone.play().catch(err => {
+            // If still blocked, try unlocking again (unlikely after first click)
+            if (err.name === 'NotAllowedError') {
+                console.warn(`[AudioEngine] Play blocked for ${name}, attempting unlock...`);
+                unlockAudio();
+            } else {
+                console.warn(`[AudioEngine] Play failed for ${name}:`, err);
+            }
+        });
+    }
 
-  function setSoundVol(v) {
-    if (sfxGain) sfxGain.gain.value = Math.max(0, Math.min(1, v));
-  }
+    // ------------------- PUBLIC API -------------------
+    function init() {
+        preloadSounds();
 
-  function setMusicVol(v) {
-    if (musicGain) musicGain.gain.value = Math.max(0, Math.min(1, v * 0.35));
-    if (musicAudioEl) musicAudioEl.volume = Math.max(0, Math.min(1, v * 0.35));
-  }
+        // Set up global unlock on first user interaction
+        const unlockHandler = () => {
+            unlockAudio();
+            document.removeEventListener('click', unlockHandler);
+            document.removeEventListener('touchstart', unlockHandler);
+        };
+        document.addEventListener('click', unlockHandler);
+        document.addEventListener('touchstart', unlockHandler);
+    }
 
-  return {
-    init,
-    resume,
-    sfx: SFX,
-    startMusic,
-    stopMusic,
-    setSound,
-    setMusic,
-    setSoundVol,
-    setMusicVol,
-    get soundEnabled() { return soundEnabled; },
-    get musicEnabled() { return musicEnabled; },
-  };
+    function resume() {
+        // Called externally (e.g., after a modal close) to ensure music plays
+        if (!isUnlocked) unlockAudio();
+        if (musicElement && musicElement.paused && musicEnabled) {
+            musicElement.play().catch(e => console.warn('Resume music:', e));
+        }
+    }
 
+    // SFX methods – each maps to a sound key
+    const SFX = {
+        click()          { playSFX('click', 0.6); },
+        spinStart()      { playSFX('spinStart', 0.9); },
+        reelTick()       { playSFX('reelTick', 0.4); },
+        reelStop()       { playSFX('reelStop', 0.9); },
+        smallWin()       { playSFX('smallWin', 0.7); },
+        bigWin()         { playSFX('bigWin', 0.9); },
+        megaWin()        { playSFX('megaWin', 1.0); },
+        scatterLand()    { playSFX('scatter', 0.9); },
+        freeSpinsStart() { playSFX('freeSpins', 0.9); },
+        bonusCollect()   { playSFX('bonus', 0.8); },
+        deposit()        { playSFX('deposit', 0.7); },
+        error()          { playSFX('error', 0.6); },
+        countdown()      { playSFX('countdown', 0.5); }
+    };
+
+    function startMusic() {
+        if (!musicEnabled) return;
+        if (musicElement) {
+            musicElement.play().catch(e => console.warn('Music play:', e));
+            return;
+        }
+
+        // Use custom music source if defined (compatibility with old engine)
+        let musicPath = AUDIO_BASE + SOUND_FILES.bg;
+        if (window.JOZI_MUSIC_SRC && window.JOZI_MUSIC_SRC !== null) {
+            musicPath = window.JOZI_MUSIC_SRC;
+        }
+
+        musicElement = new Audio(musicPath);
+        musicElement.loop = true;
+        musicElement.volume = globalMusicVolume;
+        musicElement.addEventListener('error', () => {
+            console.warn('[AudioEngine] Background music failed to load:', musicPath);
+        });
+        musicElement.play().catch(e => {
+            console.warn('Music autoplay blocked – will start after unlock.');
+        });
+    }
+
+    function stopMusic() {
+        if (musicElement) {
+            musicElement.pause();
+        }
+    }
+
+    function setSound(enabled) {
+        soundEnabled = enabled;
+        // No need to mute currently playing clones – they'll finish naturally.
+    }
+
+    function setMusic(enabled) {
+        musicEnabled = enabled;
+        if (enabled) {
+            startMusic();
+        } else {
+            stopMusic();
+        }
+    }
+
+    function setSoundVol(vol) {
+        globalSfxVolume = Math.max(0, Math.min(1, vol));
+        // Update volume for already preloaded sounds (optional)
+        for (const sound of Object.values(soundCache)) {
+            sound.volume = globalSfxVolume;
+        }
+    }
+
+    function setMusicVol(vol) {
+        globalMusicVolume = Math.max(0, Math.min(1, vol));
+        if (musicElement) {
+            musicElement.volume = globalMusicVolume;
+        }
+    }
+
+    // Getters for UI
+    Object.defineProperty(this, 'soundEnabled', {
+        get: () => soundEnabled
+    });
+    Object.defineProperty(this, 'musicEnabled', {
+        get: () => musicEnabled
+    });
+
+    return {
+        init,
+        resume,
+        sfx: SFX,
+        startMusic,
+        stopMusic,
+        setSound,
+        setMusic,
+        setSoundVol,
+        setMusicVol,
+        get soundEnabled() { return soundEnabled; },
+        get musicEnabled() { return musicEnabled; }
+    };
 })();
